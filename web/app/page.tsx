@@ -1,12 +1,17 @@
+// app/page.tsx
+
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation'; // Add this import
 import { Bot, Github, FileText, MessageSquare, BarChart } from 'lucide-react';
 
 export default function LoginPage() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const router = useRouter(); // Add this
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +26,7 @@ export default function LoginPage() {
       });
 
       if (!res.ok) throw new Error('Invalid token');
-      window.location.href = '/console';
+      router.push('/console'); // Changed from window.location.href
     } catch {
       setError("Invalid token. Try 'dev' for demo access.");
     } finally {
