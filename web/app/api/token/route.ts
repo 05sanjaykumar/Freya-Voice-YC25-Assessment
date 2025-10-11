@@ -1,3 +1,4 @@
+// web/app/api/token/route.ts
 import { AccessToken } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 

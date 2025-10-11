@@ -1,3 +1,4 @@
+// web/app/api/prompts/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/store';
 
