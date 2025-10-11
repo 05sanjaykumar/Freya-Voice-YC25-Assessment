@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/agent/venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/agent/venv/lib/python3.11/site-packages"
+  ],
+  "python.autoComplete.extraPaths": [
+    "${workspaceFolder}/agent/venv/lib/python3.11/site-packages"
+  ]
+}
