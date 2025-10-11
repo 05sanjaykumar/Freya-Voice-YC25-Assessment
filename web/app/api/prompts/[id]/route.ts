@@ -5,9 +5,10 @@ import { store } from '@/lib/store';
 // GET /api/prompts/:id - Get single prompt
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params; // ← AWAIT this!
     const prompt = store.getPrompt(params.id);
 
     if (!prompt) {
@@ -29,9 +30,10 @@ export async function GET(
 // PUT /api/prompts/:id - Update prompt
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params; // ← AWAIT this!
     const body = await req.json();
     const { title, body: promptBody, tags } = body;
 
@@ -60,9 +62,10 @@ export async function PUT(
 // DELETE /api/prompts/:id - Delete prompt
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params; // ← AWAIT this!
     const deleted = store.deletePrompt(params.id);
 
     if (!deleted) {
