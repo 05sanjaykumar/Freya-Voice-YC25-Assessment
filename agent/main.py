@@ -87,46 +87,43 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"👤 Listening to: {user.identity}")
 
     # Process audio in a loop
-    # Process audio in a loop
     async def process_conversation():
-        """Listen to user, respond with AI"""
+        """Simpler conversation loop"""
         
-        # Wait a moment for tracks to be ready
         await asyncio.sleep(0.5)
         
-        # Subscribe to user's audio track
-        audio_track = None
-        for track_pub in user.track_publications.values():
-            if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
-                logger.info(f"🎤 Found audio track, subscribed: {track_pub.subscribed}")
-                
-                # If not subscribed, subscribe now
-                if not track_pub.subscribed:
-                    track_pub.set_subscribed(True)
-                    await asyncio.sleep(0.5)  # Wait for subscription
-                
-                audio_track = track_pub.track
-                break
-        
-        if not audio_track:
-            logger.warning("⚠️ No audio track found!")
-            return
-        
-        # Generate a greeting
+        # Send greeting
         greeting = "Hello! I'm your AI assistant. How can I help you today?"
-        logger.info(f"🤖 Agent saying: {greeting}")
+        logger.info(f"🤖 {greeting}")
+        async for chunk in tts.synthesize(greeting):
+            await audio_source.capture_frame(chunk.frame)
+        logger.info("✅ Greeting sent, now listening...")
         
-        # Convert to speech and send
-        try:
-            # Synthesize speech
-            async for audio_chunk in tts.synthesize(greeting):
-                await audio_source.capture_frame(audio_chunk.frame) 
-            logger.info("✅ Greeting sent!")
-            
-        except Exception as e:
-            logger.error(f"❌ Error sending greeting: {e}")
-            import traceback
-            traceback.print_exc()
+        # Use LiveKit's built-in conversation helper
+        from livekit.agents import stt as stt_module
+        
+        stream = stt_module.StreamAdapter(
+            stt=stt,
+            vad=vad,
+        )
+        
+        async for event in stream.stream():
+            if event.type == stt_module.SpeechEventType.FINAL_TRANSCRIPT:
+                user_text = event.alternatives[0].text
+                logger.info(f"👤 User: {user_text}")
+                
+                # Generate response
+                messages.append({"role": "user", "content": user_text})
+                response = await llm_instance.chat(messages)
+                ai_text = response.choices[0].message.content
+                
+                logger.info(f"🤖 Agent: {ai_text}")
+                messages.append({"role": "assistant", "content": ai_text})
+                
+                # Speak it
+                async for chunk in tts.synthesize(ai_text):
+                    await audio_source.capture_frame(chunk.frame)
+
     
     # Run the conversation
     await process_conversation()
