@@ -14,7 +14,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 CARTESIA_API_KEY = os.getenv("CARTESIA_API_KEY")
 
 # Models
-LLM_MODEL = "llama3-70b-8192"
+LLM_MODEL = "llama-3.1-8b-instant"
 DEFAULT_PROMPT = "You are a helpful AI assistant."
 
 # Audio settings

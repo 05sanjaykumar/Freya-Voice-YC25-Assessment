@@ -103,31 +103,34 @@ class ConversationHandler:
             await recognition_stream.aclose()
             logger.info("🔇 Speech processing stopped")
 
-    
+        
     async def _generate_and_speak(self, user_text: str):
-        """Generate AI response and speak it"""
+        """Generate AI response - CORRECT API v1.2.14"""
         try:
             from livekit.agents import llm as llm_module
             
             # Add to history
             self.messages.append({"role": "user", "content": user_text})
             
-            # Generate response
             logger.info("🧠 Generating response...")
             
             # Create ChatContext
             chat_ctx = llm_module.ChatContext()
+            
+            # Add messages using .add_message() - NOT .append()!
             for msg in self.messages:
-                chat_ctx.messages.append(
-                    llm_module.ChatMessage(
-                        role=msg["role"],
-                        content=msg["content"]
-                    )
+                chat_ctx.add_message(
+                    content=msg["content"],  # ✅ Use 'content'
+                    role=msg["role"]
                 )
             
-            # Call LLM
-            response = await self.llm.chat(chat_ctx=chat_ctx)
-            ai_text = response.choices[0].message.content
+            # Stream LLM response
+            llm_stream = self.llm.chat(chat_ctx=chat_ctx)
+            
+            # Collect response
+            ai_text = ""
+            async for chunk in llm_stream:
+                ai_text += chunk.content or ""
             
             logger.info(f"🤖 Agent: {ai_text}")
             self.messages.append({"role": "assistant", "content": ai_text})
@@ -138,12 +141,6 @@ class ConversationHandler:
                 await self.audio_source.capture_frame(chunk.frame)
             
             logger.info("✅ Response complete!")
-        
-        except Exception as e:
-            logger.error(f"❌ Generation error: {e}")
-            import traceback
-            traceback.print_exc()
-
         
         except Exception as e:
             logger.error(f"❌ Generation error: {e}")
