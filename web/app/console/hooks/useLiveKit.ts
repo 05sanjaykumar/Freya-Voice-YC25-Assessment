@@ -1,3 +1,4 @@
+// web/app/console/hooks/useLiveKit.ts
 import { useState, useCallback, useEffect } from 'react';
 import {
   Room,
@@ -19,6 +20,31 @@ export function useLiveKit() {
     timestamp: Date;
   }>>([]);
 
+  // Handle incoming audio tracks (agent speaking) - MOVED UP!
+  const handleTrackSubscribed = useCallback(
+    (
+      track: RemoteTrack,
+      publication: RemoteTrackPublication,
+      participant: RemoteParticipant
+    ) => {
+      console.log('🔊 Track subscribed:', track.kind, 'from', participant.identity);
+      
+      if (track.kind === Track.Kind.Audio) {
+        const audioElement = track.attach();
+        audioElement.autoplay = true;
+        audioElement.volume = 1.0;
+        document.body.appendChild(audioElement);
+        console.log('✅ Audio element created and attached:', audioElement);
+        
+        // Force play (in case autoplay is blocked)
+        audioElement.play().catch(e => {
+          console.warn('Autoplay blocked, user interaction needed:', e);
+        });
+      }
+    },
+    []
+  );
+
   // Connect to LiveKit room
   const connect = useCallback(async (promptId: string, promptBody: string) => {
     try {
@@ -36,7 +62,7 @@ export function useLiveKit() {
         body: JSON.stringify({
           roomName,
           participantName,
-          metadata: promptBody, // Send prompt as metadata
+          metadata: promptBody,
         }),
       });
 
@@ -68,8 +94,11 @@ export function useLiveKit() {
 
       // Connect to room
       await newRoom.connect(url, token);
+      
+      // Enable microphone
       await newRoom.localParticipant.setMicrophoneEnabled(true);
       console.log('🎤 Microphone enabled');
+      
       setRoom(newRoom);
 
       return newRoom;
@@ -79,23 +108,7 @@ export function useLiveKit() {
       setIsConnecting(false);
       return null;
     }
-  }, []);
-
-  // Handle incoming audio tracks (agent speaking)
-  const handleTrackSubscribed = useCallback(
-    (
-      track: RemoteTrack,
-      publication: RemoteTrackPublication,
-      participant: RemoteParticipant
-    ) => {
-      if (track.kind === Track.Kind.Audio) {
-        const audioElement = track.attach();
-        document.body.appendChild(audioElement);
-        console.log('🔊 Playing agent audio');
-      }
-    },
-    []
-  );
+  }, [handleTrackSubscribed]); // Add dependency!
 
   // Disconnect from room
   const disconnect = useCallback(() => {

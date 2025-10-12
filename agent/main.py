@@ -51,7 +51,7 @@ async def entrypoint(ctx: JobContext):
 
     # Text-to-Speech - converts text to voice
     tts = cartesia.TTS()
-    logger.info("✅ TTS ready (Groq PlayAI)")
+    logger.info("✅ TTS ready (Cartesia TTS ready!)")
 
 
         # === STEP 2: Wait for User to Join ===
