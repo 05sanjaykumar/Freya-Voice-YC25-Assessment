@@ -10,7 +10,7 @@ from livekit.agents import (
     llm,
 )
 import asyncio
-from livekit.plugins import groq, silero
+from livekit.plugins import groq, silero, cartesia
 
 # Load environment variables
 load_dotenv()
@@ -50,26 +50,94 @@ async def entrypoint(ctx: JobContext):
     logger.info("✅ LLM ready")
 
     # Text-to-Speech - converts text to voice
-    tts = groq.TTS()
-    logger.info("✅ TTS ready")
+    tts = cartesia.TTS()
+    logger.info("✅ TTS ready (Groq PlayAI)")
+
 
         # === STEP 2: Wait for User to Join ===
     logger.info("⏳ Waiting for user to join...")
     await ctx.wait_for_participant()
     logger.info("👤 User joined! Starting conversation...")
 
-    # === STEP 3: Keep Agent Alive ===
-    # For now, just keep the agent connected
-    # We'll add actual voice processing in Step 3
-    logger.info("🎙️ Agent ready to listen")
+    # === STEP 3: Create Audio Output for Agent's Voice ===
+    logger.info("🔊 Setting up audio output...")
 
-    # Keep the agent running (don't exit)
-    # Wait forever until room closes
+    # Create audio source (24kHz, mono)
+    audio_source = rtc.AudioSource(24000, 1)
+
+    # Create audio track
+    audio_track = rtc.LocalAudioTrack.create_audio_track("agent-voice", audio_source)
+
+    # Publish the track so user can hear agent
+    options = rtc.TrackPublishOptions()
+    options.source = rtc.TrackSource.SOURCE_MICROPHONE
+    await ctx.room.local_participant.publish_track(audio_track, options)
+
+    logger.info("✅ Audio output ready")
+
+    # === STEP 4: Start Voice Conversation ===
+    logger.info("🎙️ Starting voice conversation...")
+
+    # Create conversation history
+    messages = []
+    messages.append({"role": "system", "content": system_prompt})
+
+    # Get user's audio stream
+    user = list(ctx.room.remote_participants.values())[0]
+    logger.info(f"👤 Listening to: {user.identity}")
+
+    # Process audio in a loop
+    # Process audio in a loop
+    async def process_conversation():
+        """Listen to user, respond with AI"""
+        
+        # Wait a moment for tracks to be ready
+        await asyncio.sleep(0.5)
+        
+        # Subscribe to user's audio track
+        audio_track = None
+        for track_pub in user.track_publications.values():
+            if track_pub.kind == rtc.TrackKind.KIND_AUDIO:
+                logger.info(f"🎤 Found audio track, subscribed: {track_pub.subscribed}")
+                
+                # If not subscribed, subscribe now
+                if not track_pub.subscribed:
+                    track_pub.set_subscribed(True)
+                    await asyncio.sleep(0.5)  # Wait for subscription
+                
+                audio_track = track_pub.track
+                break
+        
+        if not audio_track:
+            logger.warning("⚠️ No audio track found!")
+            return
+        
+        # Generate a greeting
+        greeting = "Hello! I'm your AI assistant. How can I help you today?"
+        logger.info(f"🤖 Agent saying: {greeting}")
+        
+        # Convert to speech and send
+        try:
+            # Synthesize speech
+            async for audio_chunk in tts.synthesize(greeting):
+                await audio_source.capture_frame(audio_chunk.frame) 
+            logger.info("✅ Greeting sent!")
+            
+        except Exception as e:
+            logger.error(f"❌ Error sending greeting: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Run the conversation
+    await process_conversation()
+
+    # Keep agent alive
+    logger.info("🔄 Conversation active, waiting for room to close...")
     try:
         while ctx.room.connection_state == rtc.ConnectionState.CONN_CONNECTED:
-            await asyncio.sleep(1)  # Check every second
+            await asyncio.sleep(1)
     except Exception:
-        pass  # Room closed or error
+        pass
 
     logger.info("👋 Room closed, agent shutting down")
 

@@ -68,6 +68,8 @@ export function useLiveKit() {
 
       // Connect to room
       await newRoom.connect(url, token);
+      await newRoom.localParticipant.setMicrophoneEnabled(true);
+      console.log('🎤 Microphone enabled');
       setRoom(newRoom);
 
       return newRoom;
