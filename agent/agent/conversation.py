@@ -130,7 +130,16 @@ class ConversationHandler:
             # Collect response
             ai_text = ""
             async for chunk in llm_stream:
-                ai_text += chunk.content or ""
+                if hasattr(chunk, 'content') and chunk.content:
+                    ai_text += chunk.content
+                elif hasattr(chunk, 'delta') and chunk.delta:
+                    # delta is an object, get its content
+                    if hasattr(chunk.delta, 'content') and chunk.delta.content:
+                        ai_text += chunk.delta.content
+            
+            if not ai_text:
+                logger.warning("⚠️ Empty response from LLM")
+                return
             
             logger.info(f"🤖 Agent: {ai_text}")
             self.messages.append({"role": "assistant", "content": ai_text})
