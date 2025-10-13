@@ -1,31 +1,36 @@
 services:
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    environment:
-      - LIVEKIT_URL=${LIVEKIT_URL}
-      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
-      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-      - NEXT_PUBLIC_LIVEKIT_URL=${LIVEKIT_URL}
-    volumes:
-      - ./web:/app
-      - /app/node_modules
-      - /app/.next
-    command: npm run dev
-
   agent:
     build:
       context: ./agent
       dockerfile: Dockerfile
+    container_name: freya-agent
     environment:
       - LIVEKIT_URL=${LIVEKIT_URL}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - ./agent:/app
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - CARTESIA_API_KEY=${CARTESIA_API_KEY}
+    restart: unless-stopped
+    networks:
+      - freya-network
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: freya-web
+    environment:
+      - NEXT_PUBLIC_LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+    ports:
+      - "3000:3000"
     depends_on:
-      - web
+      - agent
+    restart: unless-stopped
+    networks:
+      - freya-network
+
+networks:
+  freya-network:
+    driver: bridge
