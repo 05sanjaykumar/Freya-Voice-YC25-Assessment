@@ -23,7 +23,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  latency?: number; // milliseconds to first token
+  latency?: number;
   tokensPerSec?: number;
 }
 
@@ -38,26 +38,76 @@ export interface Session {
 }
 
 export interface SessionMetrics {
-  avgFirstTokenLatency: number; // ms
+  avgFirstTokenLatency: number;
   avgTokensPerSec: number;
   totalMessages: number;
   errorCount: number;
 }
 
-// ==================== IN-MEMORY STORAGE ====================
+// ==================== IN-MEMORY STORAGE WITH PERSISTENCE ====================
 
 class InMemoryStore {
   private prompts: Map<string, Prompt> = new Map();
   private sessions: Map<string, Session> = new Map();
 
   constructor() {
-    // Initialize with demo data
-    this.seedDemoData();
+    // Load from localStorage FIRST
+    this.loadFromLocalStorage();
+    
+    // Only seed demo data if storage is empty
+    if (this.prompts.size === 0) {
+      this.seedDemoData();
+      this.saveToLocalStorage(); // Save demo data
+    }
+  }
+
+  // ==================== PERSISTENCE ====================
+
+  private loadFromLocalStorage() {
+    if (typeof window === 'undefined') return; // SSR check
+    
+    try {
+      const promptsData = localStorage.getItem('freya_prompts');
+      const sessionsData = localStorage.getItem('freya_sessions');
+      
+      if (promptsData) {
+        const parsed = JSON.parse(promptsData);
+        this.prompts = new Map(parsed);
+        console.log('✅ Loaded prompts from localStorage:', this.prompts.size);
+      }
+      
+      if (sessionsData) {
+        const parsed = JSON.parse(sessionsData);
+        this.sessions = new Map(parsed);
+        console.log('✅ Loaded sessions from localStorage:', this.sessions.size);
+      }
+    } catch (e) {
+      console.error('❌ Failed to load from localStorage:', e);
+    }
+  }
+
+  private saveToLocalStorage() {
+    if (typeof window === 'undefined') return; // SSR check
+    
+    try {
+      // Convert Maps to arrays for JSON serialization
+      const promptsArray = Array.from(this.prompts.entries());
+      const sessionsArray = Array.from(this.sessions.entries());
+      
+      localStorage.setItem('freya_prompts', JSON.stringify(promptsArray));
+      localStorage.setItem('freya_sessions', JSON.stringify(sessionsArray));
+      
+      console.log('💾 Saved to localStorage:', {
+        prompts: this.prompts.size,
+        sessions: this.sessions.size
+      });
+    } catch (e) {
+      console.error('❌ Failed to save to localStorage:', e);
+    }
   }
 
   // ==================== PROMPTS ====================
 
-  // Create
   createPrompt(data: Omit<Prompt, 'id' | 'createdAt' | 'updatedAt'>): Prompt {
     const now = new Date().toISOString();
     const prompt: Prompt = {
@@ -68,10 +118,10 @@ class InMemoryStore {
       versions: [{ body: data.body, timestamp: now }],
     };
     this.prompts.set(prompt.id, prompt);
+    this.saveToLocalStorage(); // ← SAVE
     return prompt;
   }
 
-  // Read
   getPrompt(id: string): Prompt | undefined {
     return this.prompts.get(id);
   }
@@ -82,14 +132,12 @@ class InMemoryStore {
     );
   }
 
-  // Update
   updatePrompt(id: string, data: Partial<Omit<Prompt, 'id' | 'createdAt'>>): Prompt | null {
     const prompt = this.prompts.get(id);
     if (!prompt) return null;
 
     const now = new Date().toISOString();
     
-    // If body changed, save version
     if (data.body && data.body !== prompt.body) {
       const versions = prompt.versions || [];
       versions.push({ body: data.body, timestamp: now });
@@ -103,15 +151,16 @@ class InMemoryStore {
     };
     
     this.prompts.set(id, updated);
+    this.saveToLocalStorage(); // ← SAVE
     return updated;
   }
 
-  // Delete
   deletePrompt(id: string): boolean {
-    return this.prompts.delete(id);
+    const deleted = this.prompts.delete(id);
+    if (deleted) this.saveToLocalStorage(); // ← SAVE
+    return deleted;
   }
 
-  // Search
   searchPrompts(query: string): Prompt[] {
     const lowerQuery = query.toLowerCase();
     return this.getAllPrompts().filter(
@@ -122,7 +171,6 @@ class InMemoryStore {
     );
   }
 
-  // Filter by tags
   getPromptsByTags(tags: string[]): Prompt[] {
     return this.getAllPrompts().filter((p) =>
       tags.some((tag) => p.tags.includes(tag))
@@ -131,7 +179,6 @@ class InMemoryStore {
 
   // ==================== SESSIONS ====================
 
-  // Create
   createSession(promptId: string): Session {
     const prompt = this.getPrompt(promptId);
     const session: Session = {
@@ -148,10 +195,11 @@ class InMemoryStore {
       },
     };
     this.sessions.set(session.id, session);
+    this.saveToLocalStorage(); // ← SAVE
+    console.log('📝 Session created:', session.id);
     return session;
   }
 
-  // Read
   getSession(id: string): Session | undefined {
     return this.sessions.get(id);
   }
@@ -162,10 +210,15 @@ class InMemoryStore {
       .slice(0, limit);
   }
 
-  // Add message to session
+  // Alias for compatibility
+  getSessions = this.getAllSessions;
+
   addMessage(sessionId: string, message: Omit<Message, 'id' | 'timestamp'>): Message | null {
     const session = this.sessions.get(sessionId);
-    if (!session) return null;
+    if (!session) {
+      console.warn('⚠️ Session not found:', sessionId);
+      return null;
+    }
 
     const newMessage: Message = {
       id: uuidv4(),
@@ -177,10 +230,11 @@ class InMemoryStore {
     session.metrics.totalMessages++;
 
     this.sessions.set(sessionId, session);
+    this.saveToLocalStorage(); // ← SAVE
+    console.log('💬 Message added to session:', sessionId, newMessage.role);
     return newMessage;
   }
 
-  // Update session metrics
   updateSessionMetrics(sessionId: string, metrics: Partial<SessionMetrics>): void {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -191,15 +245,20 @@ class InMemoryStore {
     };
 
     this.sessions.set(sessionId, session);
+    this.saveToLocalStorage(); // ← SAVE
   }
 
-  // End session
   endSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
-    if (!session) return;
+    if (!session) {
+      console.warn('⚠️ Cannot end session, not found:', sessionId);
+      return;
+    }
 
     session.endedAt = new Date().toISOString();
     this.sessions.set(sessionId, session);
+    this.saveToLocalStorage(); // ← SAVE
+    console.log('🔚 Session ended:', sessionId);
   }
 
   // ==================== METRICS ====================
@@ -247,10 +306,23 @@ class InMemoryStore {
     };
   }
 
+  // ==================== UTILITY ====================
+
+  clearAllData() {
+    this.prompts.clear();
+    this.sessions.clear();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('freya_prompts');
+      localStorage.removeItem('freya_sessions');
+    }
+    console.log('🗑️ All data cleared');
+  }
+
   // ==================== DEMO DATA ====================
 
   private seedDemoData() {
-    // Create demo prompts
+    console.log('🌱 Seeding demo data...');
+    
     this.createPrompt({
       title: 'Fitness Coach',
       body: 'You are an energetic and motivational fitness coach. Help users achieve their fitness goals with enthusiasm and practical advice. Keep responses concise and actionable.',
@@ -274,6 +346,8 @@ class InMemoryStore {
       body: 'You are a friendly customer support representative. Address customer concerns with empathy, provide clear solutions, and maintain a professional yet warm tone.',
       tags: ['support', 'business', 'communication'],
     });
+    
+    console.log('✅ Demo data seeded');
   }
 }
 

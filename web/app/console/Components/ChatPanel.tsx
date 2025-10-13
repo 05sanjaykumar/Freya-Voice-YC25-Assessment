@@ -2,6 +2,8 @@
 import { MessageSquare, X, Mic, MicOff, Phone } from 'lucide-react';
 import { Prompt } from '../hooks/usePrompts';
 import { useLiveKit } from '../hooks/useLiveKit';
+import { store } from '@/lib/store';
+import { useEffect, useState } from 'react';
 
 interface ChatPanelProps {
   selectedPrompt: Prompt | null;
@@ -23,6 +25,36 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
     toggleMute,
   } = useLiveKit();
 
+  const [allMessages, setAllMessages] = useState<any[]>([]);
+
+  // Load all past messages when prompt is selected
+  useEffect(() => {
+    if (selectedPrompt) {
+      // Get all sessions for this prompt
+      const allSessions = store.getSessions(100);
+      const promptSessions = allSessions.filter(s => s.promptId === selectedPrompt.id);
+      
+      // Collect all messages from all sessions
+      const historicalMessages = promptSessions.flatMap(session => 
+        session.messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          sessionId: session.id
+        }))
+      );
+      
+      // Sort by timestamp
+      historicalMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      
+      setAllMessages(historicalMessages);
+      console.log(`📜 Loaded ${historicalMessages.length} past messages for prompt: ${selectedPrompt.title}`);
+    }
+  }, [selectedPrompt?.id]);
+
+  // Combine historical messages + current session messages
+  const displayMessages = [...allMessages, ...messages];
+
   const handleStartVoiceSession = async () => {
     if (selectedPrompt) {
       setSessionMode('voice');
@@ -39,6 +71,21 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
 
   const handleEndSession = () => {
     disconnect();
+    // Reload messages to include the session we just ended
+    if (selectedPrompt) {
+      const allSessions = store.getSessions(100);
+      const promptSessions = allSessions.filter(s => s.promptId === selectedPrompt.id);
+      const historicalMessages = promptSessions.flatMap(session => 
+        session.messages.map(msg => ({
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          sessionId: session.id
+        }))
+      );
+      historicalMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      setAllMessages(historicalMessages);
+    }
   };
 
   if (!selectedPrompt) {
@@ -48,7 +95,6 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
           <h2 className="font-semibold text-gray-800">Select a prompt to start</h2>
           <p className="text-sm text-gray-500">Choose from the library or create a new one</p>
         </div>
-
         <div className="flex-1 flex items-center justify-center p-10">
           <div className="space-y-3 text-center">
             <MessageSquare className="w-16 h-16 text-gray-300 mx-auto" />
@@ -67,7 +113,14 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
       {/* Header */}
       <div className="p-6 border-b">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-gray-800">{selectedPrompt.title}</h2>
+          <div>
+            <h2 className="font-semibold text-gray-800">{selectedPrompt.title}</h2>
+            {displayMessages.length > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                {displayMessages.length} total messages
+              </p>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
           </button>
@@ -106,10 +159,7 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
           )}
 
           {isConnecting && (
-            <button
-              disabled
-              className="px-6 py-2 bg-gray-300 text-gray-600 rounded-xl cursor-not-allowed"
-            >
+            <button disabled className="px-6 py-2 bg-gray-300 text-gray-600 rounded-xl cursor-not-allowed">
               Connecting...
             </button>
           )}
@@ -146,9 +196,9 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
         )}
       </div>
 
-      {/* Chat Messages */}
+      {/* Chat Messages - Shows ALL messages (historical + current) */}
       <div className="flex-1 overflow-y-auto p-6">
-        {messages.length === 0 ? (
+        {displayMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center space-y-3">
               {isConnected ? (
@@ -174,9 +224,9 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
               ) : (
                 <>
                   <MessageSquare className="w-16 h-16 text-gray-300 mx-auto" />
-                  <h3 className="text-lg font-medium text-gray-700">Ready to Chat</h3>
+                  <h3 className="text-lg font-medium text-gray-700">No messages yet</h3>
                   <p className="text-gray-500 max-w-sm mx-auto">
-                    Select a mode to start a conversation with the AI agent.
+                    Start a session to begin chatting with this prompt.
                   </p>
                 </>
               )}
@@ -184,7 +234,7 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
           </div>
         ) : (
           <div className="space-y-4">
-            {messages.map((msg, i) => (
+            {displayMessages.map((msg, i) => (
               <div
                 key={i}
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}

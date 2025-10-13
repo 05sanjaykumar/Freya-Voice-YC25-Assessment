@@ -120,12 +120,26 @@ export function useLiveKit() {
     [handleDataReceived, handleTrackSubscribed]
   );
 
+    const loadSession = useCallback((sessionId: string) => {
+    const session = store.getSession(sessionId);
+    if (session) {
+      // Load messages from stored session
+      const loadedMessages = session.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp)
+      }));
+      setMessages(loadedMessages);
+      sessionIdRef.current = sessionId;
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     if (room) {
       room.disconnect();
       setRoom(null);
       setIsConnected(false);
-      setMessages([]);
+      // setMessages([]);
       if (sessionIdRef.current) store.endSession(sessionIdRef.current);
       sessionIdRef.current = null;
       setSessionMode(null);
@@ -152,5 +166,6 @@ export function useLiveKit() {
     setSessionMode,
     isMuted,
     toggleMute,
+    loadSession
   };
 }
