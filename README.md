@@ -2,6 +2,11 @@
 
 Production-grade voice AI agent console built for Freya (YC S25). Real-time voice conversation system with LiveKit streaming.
 
+# Video demo
+
+https://github.com/user-attachments/assets/d0bf03f3-77b7-4659-9f30-07dadb23a785
+
+
 ## Features
 
 - Voice-to-Voice AI: Groq Whisper STT → llama-3.1-8b → Cartesia TTS
