@@ -13,6 +13,8 @@ export function useLiveKit() {
 
   const sessionIdRef = useRef<string | null>(null);
 
+  
+
   const toggleMute = () => {
     if (room && sessionMode === 'voice') {
       const enabled = !isMuted;
@@ -21,27 +23,80 @@ export function useLiveKit() {
     }
   };
 
-  // Data handling
+  const lastUserMessageTime = useRef<number | null>(null);
+
+  // Handle incoming data (transcripts)
   const handleDataReceived = useCallback(
     (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const text = new TextDecoder().decode(payload);
         const data = JSON.parse(text);
 
-        if (data.type === 'text_message' || data.type === 'transcript') {
-          const newMessage = { role: data.role as 'user' | 'assistant', content: data.content, timestamp: new Date() };
+        if (data.type === 'transcript') {
+          const now = Date.now();
+          
+          // Calculate latency for assistant messages
+          let latency: number | undefined;
+          if (data.role === 'assistant' && lastUserMessageTime.current) {
+            latency = now - lastUserMessageTime.current;
+            console.log('⏱️ First token latency:', latency, 'ms');
+          }
+
+          // Update timestamp for user messages
+          if (data.role === 'user') {
+            lastUserMessageTime.current = now;
+          }
+
+          const newMessage = {
+            role: data.role as 'user' | 'assistant',
+            content: data.content,
+            timestamp: new Date(),
+          };
+
           setMessages(prev => [...prev, newMessage]);
 
+          // Save to store with metrics
           if (sessionIdRef.current) {
-            store.addMessage(sessionIdRef.current, { role: newMessage.role, content: newMessage.content });
+            const messageWithMetrics = {
+              role: newMessage.role,
+              content: newMessage.content,
+              latency: latency,
+            };
+            
+            store.addMessage(sessionIdRef.current, messageWithMetrics);
+
+            // Update session metrics
+            if (latency && data.role === 'assistant') {
+              // Approximate tokens (words * 1.3 for subword tokens)
+              const approxTokens = Math.round(data.content.split(/\s+/).length * 1.3);
+              const tokensPerSec = Math.round((approxTokens / latency) * 1000);
+              
+              store.updateSessionMetrics(sessionIdRef.current, {
+                avgFirstTokenLatency: latency,
+                avgTokensPerSec: tokensPerSec > 0 ? tokensPerSec : 25,
+              });
+              
+              console.log('📊 Metrics updated:', { latency, tokensPerSec });
+            }
           }
         }
       } catch (e) {
         console.error('Failed to parse data:', e);
+        
+        // Track errors
+        if (sessionIdRef.current) {
+          const session = store.getSession(sessionIdRef.current);
+          if (session) {
+            store.updateSessionMetrics(sessionIdRef.current, {
+              errorCount: (session.metrics.errorCount || 0) + 1,
+            });
+          }
+        }
       }
     },
     []
   );
+
 
   // Handle audio track for voice
   const handleTrackSubscribed = useCallback(
@@ -166,6 +221,7 @@ export function useLiveKit() {
     setSessionMode,
     isMuted,
     toggleMute,
-    loadSession
+    loadSession,
+    sessionId: sessionIdRef.current,
   };
 }

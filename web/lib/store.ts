@@ -239,14 +239,40 @@ class InMemoryStore {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    // If new latency data, calculate rolling average
+    if (metrics.avgFirstTokenLatency !== undefined) {
+      const currentAvg = session.metrics.avgFirstTokenLatency;
+      const messageCount = session.messages.filter(m => m.role === 'assistant').length;
+      
+      // Rolling average
+      const newAvg = messageCount > 0
+        ? Math.round((currentAvg * (messageCount - 1) + metrics.avgFirstTokenLatency) / messageCount)
+        : metrics.avgFirstTokenLatency;
+      
+      metrics.avgFirstTokenLatency = newAvg;
+    }
+
+    // Same for tokens/sec
+    if (metrics.avgTokensPerSec !== undefined) {
+      const currentAvg = session.metrics.avgTokensPerSec;
+      const messageCount = session.messages.filter(m => m.role === 'assistant').length;
+      
+      const newAvg = messageCount > 0
+        ? Math.round((currentAvg * (messageCount - 1) + metrics.avgTokensPerSec) / messageCount)
+        : metrics.avgTokensPerSec;
+      
+      metrics.avgTokensPerSec = newAvg;
+    }
+
     session.metrics = {
       ...session.metrics,
       ...metrics,
     };
 
     this.sessions.set(sessionId, session);
-    this.saveToLocalStorage(); // ← SAVE
+    this.saveToLocalStorage();
   }
+
 
   endSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
