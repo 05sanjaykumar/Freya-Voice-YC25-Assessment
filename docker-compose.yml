@@ -18,9 +18,11 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_LIVEKIT_URL: ${LIVEKIT_URL}
     container_name: freya-web
     environment:
-      - NEXT_PUBLIC_LIVEKIT_URL=${LIVEKIT_URL}
+      # Server-side env vars (runtime)
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
     ports:
