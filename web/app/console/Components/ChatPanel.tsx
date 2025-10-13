@@ -10,7 +10,7 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
-  const { isConnected, isConnecting, error, connect, disconnect, messages } = useLiveKit();
+  const { isConnected, isConnecting, error, connect, disconnect, messages, sendTextMessage } = useLiveKit();
   const [isMuted, setIsMuted] = useState(false);
 
   const handleStartSession = async () => {
@@ -172,6 +172,38 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
           </div>
         )}
       </div>
+            {/* Text Input (only show when connected) */}
+      {isConnected && (
+        <div className="border-t p-4 bg-gray-50">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = e.currentTarget.elements.namedItem('message') as HTMLInputElement;
+              const text = input.value.trim();
+              if (text && sendTextMessage) {
+                sendTextMessage(text);
+                input.value = '';
+              }
+            }}
+            className="flex gap-3"
+          >
+            <input
+              type="text"
+              name="message"
+              placeholder="Type a message or use voice..."
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={!isConnected}
+            />
+            <button
+              type="submit"
+              disabled={!isConnected}
+              className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,4 +1,6 @@
+# agent/agent/voice_agent.py
 """Main voice agent implementation"""
+import asyncio
 import logging
 from livekit import rtc
 from livekit.agents import AutoSubscribe, JobContext
@@ -9,7 +11,6 @@ from . import config
 
 logger = logging.getLogger("voice-agent")
 
-
 class VoiceAgent:
     """Main voice agent that handles LiveKit connection and conversation"""
     
@@ -17,6 +18,7 @@ class VoiceAgent:
         self.ctx = ctx
         self.system_prompt = ctx.room.metadata or config.DEFAULT_PROMPT
         self.conversation = None
+        self.background_tasks = set()  # Prevent task garbage collection
     
     async def start(self):
         """Start the agent"""
@@ -38,15 +40,32 @@ class VoiceAgent:
         # Setup audio output
         audio_source = await self._setup_audio_output()
         
-        # Create conversation handler
+        # Create conversation handler (BEFORE event listener!)
         self.conversation = ConversationHandler(
             stt=self.stt,
             llm=self.llm,
             tts=self.tts,
             vad=self.vad,
-            audio_source=audio_source
+            audio_source=audio_source,
+            room=self.ctx.room  # Pass room reference
         )
         self.conversation.set_system_prompt(self.system_prompt)
+        
+        # NOW register event listener (conversation exists!)
+        @self.ctx.room.on("data_received")
+        def on_data(data: bytes, participant):
+            import json
+            try:
+                message = json.loads(data.decode('utf-8'))
+                if message.get('type') == 'text_message':
+                    task = asyncio.create_task(
+                        self.conversation.handle_text_message(message['content'])
+                    )
+                    # Keep reference to prevent garbage collection
+                    self.background_tasks.add(task)
+                    task.add_done_callback(self.background_tasks.discard)
+            except Exception as e:
+                logger.error(f"❌ Data error: {e}")
         
         # Start conversation
         await self._run_conversation()

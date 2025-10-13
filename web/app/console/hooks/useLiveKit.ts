@@ -1,5 +1,5 @@
 // web/app/console/hooks/useLiveKit.ts
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Room,
   RoomEvent,
@@ -8,6 +8,7 @@ import {
   RemoteTrackPublication,
   RemoteParticipant,
 } from 'livekit-client';
+import { store } from '@/lib/store';
 
 export function useLiveKit() {
   const [room, setRoom] = useState<Room | null>(null);
@@ -19,8 +20,44 @@ export function useLiveKit() {
     content: string;
     timestamp: Date;
   }>>([]);
+  
+  const sessionIdRef = useRef<string | null>(null);
+  const promptIdRef = useRef<string | null>(null);
 
-  // Handle incoming audio tracks (agent speaking) - MOVED UP!
+  // Handle incoming data (transcripts + text responses)
+  const handleDataReceived = useCallback(
+    (payload: Uint8Array, participant?: RemoteParticipant) => {
+      try {
+        const text = new TextDecoder().decode(payload);
+        const data = JSON.parse(text);
+        
+        console.log('📨 Data received:', data);
+        
+        if (data.type === 'transcript') {
+          const newMessage = {
+            role: data.role as 'user' | 'assistant',
+            content: data.content,
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => [...prev, newMessage]);
+          
+          // Save to session store
+          if (sessionIdRef.current) {
+            store.addMessage(sessionIdRef.current, {
+              role: newMessage.role,
+              content: newMessage.content,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('❌ Failed to parse data:', e);
+      }
+    },
+    []
+  );
+
+  // Handle incoming audio tracks (agent speaking)
   const handleTrackSubscribed = useCallback(
     (
       track: RemoteTrack,
@@ -34,9 +71,8 @@ export function useLiveKit() {
         audioElement.autoplay = true;
         audioElement.volume = 1.0;
         document.body.appendChild(audioElement);
-        console.log('✅ Audio element created and attached:', audioElement);
+        console.log('✅ Audio element created and attached');
         
-        // Force play (in case autoplay is blocked)
         audioElement.play().catch(e => {
           console.warn('Autoplay blocked, user interaction needed:', e);
         });
@@ -45,11 +81,62 @@ export function useLiveKit() {
     []
   );
 
+  // Send text message via data channel
+  const sendTextMessage = useCallback(async (text: string) => {
+    if (!room || !isConnected) {
+      console.error('❌ Cannot send: not connected');
+      return;
+    }
+
+    try {
+      // Add to local messages immediately (optimistic update)
+      const userMessage = {
+        role: 'user' as const,
+        content: text,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // Save to session
+      if (sessionIdRef.current) {
+        store.addMessage(sessionIdRef.current, {
+          role: 'user',
+          content: text,
+        });
+      }
+
+      // Send to agent via data channel
+      const data = {
+        type: 'text_message',
+        content: text,
+      };
+      
+      const encoder = new TextEncoder();
+      await room.localParticipant.publishData(
+        encoder.encode(JSON.stringify(data)),
+        { reliable: true }
+      );
+      
+      console.log('📤 Text message sent:', text);
+    } catch (err) {
+      console.error('❌ Failed to send text:', err);
+      setError('Failed to send message');
+    }
+  }, [room, isConnected]);
+
   // Connect to LiveKit room
   const connect = useCallback(async (promptId: string, promptBody: string) => {
     try {
       setIsConnecting(true);
       setError(null);
+      setMessages([]);
+
+      // Create session in store
+      const session = store.createSession(promptId);
+      sessionIdRef.current = session.id;
+      promptIdRef.current = promptId;
+      
+      console.log('📝 Session created:', session.id);
 
       // Generate unique room name
       const roomName = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -88,9 +175,16 @@ export function useLiveKit() {
       newRoom.on(RoomEvent.Disconnected, () => {
         console.log('❌ Disconnected from room');
         setIsConnected(false);
+        
+        // End session in store
+        if (sessionIdRef.current) {
+          store.endSession(sessionIdRef.current);
+          console.log('📝 Session ended:', sessionIdRef.current);
+        }
       });
 
       newRoom.on(RoomEvent.TrackSubscribed, handleTrackSubscribed);
+      newRoom.on(RoomEvent.DataReceived, handleDataReceived);
 
       // Connect to room
       await newRoom.connect(url, token);
@@ -106,9 +200,15 @@ export function useLiveKit() {
       console.error('Failed to connect:', err);
       setError(err instanceof Error ? err.message : 'Connection failed');
       setIsConnecting(false);
+      
+      // Clean up failed session
+      if (sessionIdRef.current) {
+        store.endSession(sessionIdRef.current);
+      }
+      
       return null;
     }
-  }, [handleTrackSubscribed]); // Add dependency!
+  }, [handleTrackSubscribed, handleDataReceived]);
 
   // Disconnect from room
   const disconnect = useCallback(() => {
@@ -116,6 +216,13 @@ export function useLiveKit() {
       room.disconnect();
       setRoom(null);
       setIsConnected(false);
+      
+      // End session
+      if (sessionIdRef.current) {
+        store.endSession(sessionIdRef.current);
+        sessionIdRef.current = null;
+      }
+      
       setMessages([]);
     }
   }, [room]);
@@ -125,6 +232,9 @@ export function useLiveKit() {
     return () => {
       if (room) {
         room.disconnect();
+        if (sessionIdRef.current) {
+          store.endSession(sessionIdRef.current);
+        }
       }
     };
   }, [room]);
@@ -137,5 +247,6 @@ export function useLiveKit() {
     messages,
     connect,
     disconnect,
+    sendTextMessage,
   };
 }

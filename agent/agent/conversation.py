@@ -1,3 +1,4 @@
+# agent/agent/conversation.py
 """Conversation processing logic - SIMPLIFIED"""
 import logging
 import asyncio
@@ -5,18 +6,20 @@ from livekit import rtc
 from livekit.agents import stt as stt_module
 from typing import List, Dict
 
+
 logger = logging.getLogger("voice-agent")
 
 
 class ConversationHandler:
     """Handles voice conversation loop"""
     
-    def __init__(self, stt, llm, tts, vad, audio_source):
+    def __init__(self, stt, llm, tts, vad, audio_source, room):  # ✅ Added room
         self.stt = stt
         self.llm = llm
         self.tts = tts
         self.vad = vad
         self.audio_source = audio_source
+        self.room = room  # ✅ Store room reference
         self.messages: List[Dict[str, str]] = []
     
     def set_system_prompt(self, prompt: str):
@@ -36,8 +39,6 @@ class ConversationHandler:
     async def process_user_speech(self, audio_track) -> None:
         """Process continuous user speech - CORRECT API"""
         logger.info("👂 Setting up speech recognition...")
-        
-        from livekit.agents import stt as stt_module
         
         # Create the adapter
         stream_adapter = stt_module.StreamAdapter(
@@ -60,7 +61,6 @@ class ConversationHandler:
             try:
                 frame_count = 0
                 async for event in audio_stream:
-                    # Push to the STREAM, not the adapter
                     recognition_stream.push_frame(event.frame)
                     frame_count += 1
                     if frame_count % 100 == 0:
@@ -85,6 +85,11 @@ class ConversationHandler:
                     
                     if user_text:
                         logger.info(f"👤 User: {user_text}")
+                        await self._send_to_frontend({
+                            "type": "transcript",
+                            "role": "user",
+                            "content": user_text
+                        })
                         await self._generate_and_speak(user_text)
                 
                 elif event.type == stt_module.SpeechEventType.START_OF_SPEECH:
@@ -102,7 +107,35 @@ class ConversationHandler:
             feed_task.cancel()
             await recognition_stream.aclose()
             logger.info("🔇 Speech processing stopped")
+    
+    async def _send_to_frontend(self, data: dict):
+        """Send data to frontend via data channel"""
+        import json
+        try:
+            # ✅ Use stored room reference
+            await self.room.local_participant.publish_data(
+                json.dumps(data).encode('utf-8'),
+                reliable=True
+            )
+            logger.info(f"📤 Sent to frontend: {data['type']}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send data: {e}")
+            import traceback
+            traceback.print_exc()
 
+    async def handle_text_message(self, text: str):
+        """Handle incoming text message from user"""
+        logger.info(f"💬 Text message: {text}")
+        
+        # Send confirmation back to frontend
+        await self._send_to_frontend({
+            "type": "transcript",
+            "role": "user",
+            "content": text
+        })
+        
+        # Generate and speak response
+        await self._generate_and_speak(text)
         
     async def _generate_and_speak(self, user_text: str):
         """Generate AI response - CORRECT API v1.2.14"""
@@ -120,7 +153,7 @@ class ConversationHandler:
             # Add messages using .add_message() - NOT .append()!
             for msg in self.messages:
                 chat_ctx.add_message(
-                    content=msg["content"],  # ✅ Use 'content'
+                    content=msg["content"],
                     role=msg["role"]
                 )
             
@@ -133,7 +166,6 @@ class ConversationHandler:
                 if hasattr(chunk, 'content') and chunk.content:
                     ai_text += chunk.content
                 elif hasattr(chunk, 'delta') and chunk.delta:
-                    # delta is an object, get its content
                     if hasattr(chunk.delta, 'content') and chunk.delta.content:
                         ai_text += chunk.delta.content
             
@@ -143,6 +175,13 @@ class ConversationHandler:
             
             logger.info(f"🤖 Agent: {ai_text}")
             self.messages.append({"role": "assistant", "content": ai_text})
+            
+            # ✅ Send to frontend AFTER generation
+            await self._send_to_frontend({
+                "type": "transcript",
+                "role": "assistant",
+                "content": ai_text
+            })
             
             # Speak
             logger.info("🔊 Speaking...")
