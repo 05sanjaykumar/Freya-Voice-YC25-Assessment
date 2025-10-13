@@ -191,10 +191,16 @@ export function useLiveKit() {
 
   const disconnect = useCallback(() => {
     if (room) {
+      room.removeAllListeners();
+
+
+      if (sessionIdRef.current) {
+        store.endSession(sessionIdRef.current);
+      }
       room.disconnect();
       setRoom(null);
       setIsConnected(false);
-      // setMessages([]);
+      setMessages([]);
       if (sessionIdRef.current) store.endSession(sessionIdRef.current);
       sessionIdRef.current = null;
       setSessionMode(null);

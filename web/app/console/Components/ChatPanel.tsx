@@ -69,12 +69,16 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
     }
   };
 
-  const handleEndSession = () => {
+ const handleEndSession = () => {
     disconnect();
-    // Reload messages to include the session we just ended
+  };
+
+  // ✅ Update useEffect to reload when connection changes
+  useEffect(() => {
     if (selectedPrompt) {
       const allSessions = store.getSessions(100);
       const promptSessions = allSessions.filter(s => s.promptId === selectedPrompt.id);
+      
       const historicalMessages = promptSessions.flatMap(session => 
         session.messages.map(msg => ({
           role: msg.role,
@@ -83,10 +87,11 @@ export default function ChatPanel({ selectedPrompt, onClose }: ChatPanelProps) {
           sessionId: session.id
         }))
       );
+      
       historicalMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       setAllMessages(historicalMessages);
     }
-  };
+  }, [selectedPrompt?.id, isConnected]);
 
   if (!selectedPrompt) {
     return (
