@@ -70,16 +70,36 @@ http://localhost:3000
 ## Project Structure
 
 ```
-.
-├── agent/                  # Python backend
-│   ├── main.py            # Entry point
-│   ├── agent/             # Agent implementation
-│   └── requirements.txt
-├── web/                   # Next.js frontend
-│   ├── app/              # App router pages
-│   ├── lib/              # Utilities
-│   └── package.json
-└── docker-compose.yml
+
+agent/
+├── main.py              # Entry point, LiveKit worker
+├── requirements.txt     # Python dependencies
+└── agent/
+    ├── config.py        # Environment config (LLM model, etc)
+    ├── voice_agent.py   # Main agent class, LiveKit setup
+    └── conversation.py  # Conversation handler (STT → LLM → TTS)
+
+web/
+├── app/
+│   ├── page.tsx         # Landing/login page
+│   ├── api/
+│   │   ├── auth/        # Login, logout, check endpoints
+│   │   ├── livekit/token/  # LiveKit token generation
+│   │   └── prompts/     # Prompt CRUD API
+│   └── console/
+│       ├── page.tsx     # Main dashboard
+│       ├── Components/
+│       │   ├── ChatPanel.tsx      # TEXT CHAT (needs work)
+│       │   ├── MetricsPanel.tsx   # Metrics display
+│       │   ├── PromptModal.tsx    # Create/edit prompts
+│       │   └── PromptSidebar.tsx  # Prompt list
+│       └── hooks/
+│           ├── useLiveKit.ts      # LiveKit connection logic
+│           └── usePrompts.ts      # Prompt management
+└── lib/
+    ├── store.ts         # State management
+    └── utils.ts         # Utilities
+
 ```
 
 ## Architecture
