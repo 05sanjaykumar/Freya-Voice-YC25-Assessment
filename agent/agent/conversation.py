@@ -123,20 +123,6 @@ class ConversationHandler:
             import traceback
             traceback.print_exc()
 
-    async def handle_text_message(self, text: str):
-        """Handle incoming text message from user"""
-        logger.info(f"💬 Text message: {text}")
-        
-        # Send confirmation back to frontend
-        await self._send_to_frontend({
-            "type": "transcript",
-            "role": "user",
-            "content": text
-        })
-        
-        # Generate and speak response
-        await self._generate_and_speak(text)
-        
     async def _generate_and_speak(self, user_text: str):
         """Generate AI response - CORRECT API v1.2.14"""
         try:

@@ -51,22 +51,6 @@ class VoiceAgent:
         )
         self.conversation.set_system_prompt(self.system_prompt)
         
-        # NOW register event listener (conversation exists!)
-        @self.ctx.room.on("data_received")
-        def on_data(data: bytes, participant):
-            import json
-            try:
-                message = json.loads(data.decode('utf-8'))
-                if message.get('type') == 'text_message':
-                    task = asyncio.create_task(
-                        self.conversation.handle_text_message(message['content'])
-                    )
-                    # Keep reference to prevent garbage collection
-                    self.background_tasks.add(task)
-                    task.add_done_callback(self.background_tasks.discard)
-            except Exception as e:
-                logger.error(f"❌ Data error: {e}")
-        
         # Start conversation
         await self._run_conversation()
     
