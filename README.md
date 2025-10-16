@@ -231,6 +231,20 @@ Built as Founding Engineer Assessment for Freya (YC S25)
 - Cartesia: https://cartesia.ai
 - Freya (YC S25): https://www.ycombinator.com/companies/freya
 
+## License
+
+This project is licensed under a **Portfolio Display License**.
+
+**TL;DR:**
+- ✅ You can view and study this code
+- ✅ You can reference it in discussions about employment
+- ❌ You cannot use this commercially
+- ❌ You cannot redistribute or sell this
+
+See [LICENSE](./LICENSE) file for details.
+
+For commercial licensing inquiries: contact@sanjaybuilds.com
+
 ---
 
 Built by Sanjay Kumar | [GitHub](https://github.com/05sanjaykumar/) | [LinkedIn](https://www.linkedin.com/in/sanjay-kumar-6382a1372/) | [Portfolio](https://www.sanjaybuilds.com/)
