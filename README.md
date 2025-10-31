@@ -207,7 +207,7 @@ Future enhancements for production deployment:
 
 ## Assessment Context
 
-Built as Founding Engineer Assessment for Freya (YC S25)
+Built as Forward Deploying Engineer Assessment for Freya (YC S25)
 
 - Timeframe: 3 days (10/10/25 - 13/10/25)
 - Scope: 80% complete (voice working, text chat deprioritized)
